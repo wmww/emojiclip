@@ -6,6 +6,7 @@ arch=('x86_64')
 license=('MIT')
 depends=('gtk4')
 makedepends=('cargo')
+options=(!debug)
 
 build() {
   cd "$startdir"
