@@ -1,0 +1,10 @@
+[package]
+name = "emojiclip"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gtk4 = "0.9"
+emojis = "0.8"
+unicode_names2 = "1"
+sublime_fuzzy = "0.7"
