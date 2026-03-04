@@ -12,20 +12,39 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 fn main() {
-    let stdout_mode = std::env::args().any(|a| a == "--stdout");
+    let all_args: Vec<String> = std::env::args().collect();
+    let stdout_mode = all_args.iter().any(|a| a == "--stdout");
+
+    // Everything after --cmd is the command + its args
+    let cmd: Option<Vec<String>> = all_args
+        .iter()
+        .position(|a| a == "--cmd")
+        .map(|i| all_args[i + 1..].to_vec());
 
     let app = Application::builder()
         .application_id("com.emojiclip.app")
         .build();
 
-    app.connect_activate(move |app| build_ui(app, stdout_mode));
+    app.connect_activate(move |app| build_ui(app, stdout_mode, cmd.clone()));
 
-    // Filter --stdout so GTK doesn't see it
-    let args: Vec<String> = std::env::args().filter(|a| a != "--stdout").collect();
-    app.run_with_args(&args);
+    // Filter --stdout and --cmd ... so GTK doesn't see them
+    let gtk_args: Vec<String> = {
+        let mut out = Vec::new();
+        for a in &all_args {
+            if a == "--cmd" {
+                break; // --cmd and everything after it is ours
+            }
+            if a == "--stdout" {
+                continue;
+            }
+            out.push(a.clone());
+        }
+        out
+    };
+    app.run_with_args(&gtk_args);
 }
 
-fn build_ui(app: &Application, stdout_mode: bool) {
+fn build_ui(app: &Application, stdout_mode: bool, cmd: Option<Vec<String>>) {
     // CSS for emoji sizing
     let css = CssProvider::new();
     css.load_from_data(
@@ -141,9 +160,10 @@ fn build_ui(app: &Application, stdout_mode: bool) {
 
     // Click/activate to copy and quit
     let app_for_click = app.clone();
+    let cmd_for_click = cmd.clone();
     flowbox.connect_child_activated(move |_, child| {
         if let Some(label) = child.child().and_downcast::<Label>() {
-            copy_and_quit(&label.text(), &app_for_click, stdout_mode);
+            copy_and_quit(&label.text(), &app_for_click, stdout_mode, &cmd_for_click);
         }
     });
 
@@ -153,7 +173,7 @@ fn build_ui(app: &Application, stdout_mode: bool) {
     search_entry.connect_activate(move |_| {
         if let Some(child) = flowbox_for_activate.selected_children().first() {
             if let Some(label) = child.child().and_downcast::<Label>() {
-                copy_and_quit(&label.text(), &app_for_enter, stdout_mode);
+                copy_and_quit(&label.text(), &app_for_enter, stdout_mode, &cmd);
             }
         }
     });
@@ -242,9 +262,15 @@ fn matches_filter(child: &gtk::FlowBoxChild, query: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn copy_and_quit(text: &str, app: &Application, stdout_mode: bool) {
+fn copy_and_quit(text: &str, app: &Application, stdout_mode: bool, cmd: &Option<Vec<String>>) {
     if stdout_mode {
         print!("{}", text);
+    } else if let Some(cmd_args) = cmd {
+        if let Some((program, args)) = cmd_args.split_first() {
+            let mut child_args: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+            child_args.push(text);
+            let _ = std::process::Command::new(program).args(&child_args).spawn();
+        }
     } else if let Some(display) = gdk::Display::default() {
         display.clipboard().set_text(text);
     }
