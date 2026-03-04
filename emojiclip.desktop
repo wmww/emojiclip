@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Emoji Clip
 Comment=Search and copy emojis and Unicode symbols to clipboard
-Exec=emojiclip
+Exec=emojiclip --cmd wl-copy
 Icon=accessories-character-map
 Terminal=false
 Type=Application
