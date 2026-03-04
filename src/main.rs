@@ -12,36 +12,59 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 fn main() {
-    let all_args: Vec<String> = std::env::args().collect();
-    let stdout_mode = all_args.iter().any(|a| a == "--stdout");
-
-    // Everything after --cmd is the command + its args
-    let cmd: Option<Vec<String>> = all_args
-        .iter()
-        .position(|a| a == "--cmd")
-        .map(|i| all_args[i + 1..].to_vec());
-
     let app = Application::builder()
         .application_id("com.emojiclip.app")
         .build();
 
-    app.connect_activate(move |app| build_ui(app, stdout_mode, cmd.clone()));
+    app.add_main_option(
+        "stdout",
+        glib::Char::from(0u8),
+        glib::OptionFlags::empty(),
+        glib::OptionArg::None,
+        "Print selected emoji to stdout instead of copying",
+        None,
+    );
 
-    // Filter --stdout and --cmd ... so GTK doesn't see them
-    let gtk_args: Vec<String> = {
-        let mut out = Vec::new();
-        for a in &all_args {
-            if a == "--cmd" {
-                break; // --cmd and everything after it is ours
+    app.add_main_option(
+        "cmd",
+        glib::Char::from(0u8),
+        glib::OptionFlags::empty(),
+        glib::OptionArg::String,
+        "Run COMMAND with the selected emoji as its last argument",
+        Some("COMMAND"),
+    );
+
+    app.set_option_context_description(Some(
+        "Examples:\n  emojiclip --stdout\n  emojiclip --cmd 'wl-copy -o'",
+    ));
+
+    let stdout_mode = Rc::new(Cell::new(false));
+    let cmd: Rc<RefCell<Option<Vec<String>>>> = Rc::new(RefCell::new(None));
+
+    {
+        let stdout_mode = stdout_mode.clone();
+        let cmd = cmd.clone();
+        app.connect_handle_local_options(move |_, options| {
+            if options.contains("stdout") {
+                stdout_mode.set(true);
             }
-            if a == "--stdout" {
-                continue;
+            if let Ok(Some(raw)) = options.lookup::<String>("cmd") {
+                let cmd_vec: Vec<String> = raw.split_whitespace().map(String::from).collect();
+                *cmd.borrow_mut() = Some(cmd_vec);
             }
-            out.push(a.clone());
-        }
-        out
-    };
-    app.run_with_args(&gtk_args);
+            -1
+        });
+    }
+
+    {
+        let stdout_mode = stdout_mode.clone();
+        let cmd = cmd.clone();
+        app.connect_activate(move |app| {
+            build_ui(app, stdout_mode.get(), cmd.borrow().clone());
+        });
+    }
+
+    app.run();
 }
 
 fn build_ui(app: &Application, stdout_mode: bool, cmd: Option<Vec<String>>) {
