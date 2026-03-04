@@ -12,15 +12,20 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 fn main() {
+    let stdout_mode = std::env::args().any(|a| a == "--stdout");
+
     let app = Application::builder()
         .application_id("com.emojiclip.app")
         .build();
 
-    app.connect_activate(build_ui);
-    app.run();
+    app.connect_activate(move |app| build_ui(app, stdout_mode));
+
+    // Filter --stdout so GTK doesn't see it
+    let args: Vec<String> = std::env::args().filter(|a| a != "--stdout").collect();
+    app.run_with_args(&args);
 }
 
-fn build_ui(app: &Application) {
+fn build_ui(app: &Application, stdout_mode: bool) {
     // CSS for emoji sizing
     let css = CssProvider::new();
     css.load_from_data(
@@ -138,7 +143,7 @@ fn build_ui(app: &Application) {
     let app_for_click = app.clone();
     flowbox.connect_child_activated(move |_, child| {
         if let Some(label) = child.child().and_downcast::<Label>() {
-            copy_and_quit(&label.text(), &app_for_click);
+            copy_and_quit(&label.text(), &app_for_click, stdout_mode);
         }
     });
 
@@ -148,7 +153,7 @@ fn build_ui(app: &Application) {
     search_entry.connect_activate(move |_| {
         if let Some(child) = flowbox_for_activate.selected_children().first() {
             if let Some(label) = child.child().and_downcast::<Label>() {
-                copy_and_quit(&label.text(), &app_for_enter);
+                copy_and_quit(&label.text(), &app_for_enter, stdout_mode);
             }
         }
     });
@@ -237,8 +242,10 @@ fn matches_filter(child: &gtk::FlowBoxChild, query: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn copy_and_quit(text: &str, app: &Application) {
-    if let Some(display) = gdk::Display::default() {
+fn copy_and_quit(text: &str, app: &Application, stdout_mode: bool) {
+    if stdout_mode {
+        print!("{}", text);
+    } else if let Some(display) = gdk::Display::default() {
         display.clipboard().set_text(text);
     }
     app.quit();
